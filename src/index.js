@@ -1,6 +1,6 @@
 const VERSION = require('../package.json').version;
 const md5 = require('blueimp-md5');
-const marked = require('marked');
+const {marked} = require('marked');
 const autosize = require('autosize');
 const timeAgo = require('./utils/timeago');
 const detect = require('./utils/detect');
@@ -8,6 +8,7 @@ const Utils = require('./utils/domUtils');
 const Emoji = require('./plugins/emojis');
 const hanabi = require('hanabi');
 const AV = require('leancloud-storage')
+const axios = require("axios")
 const defaultComment = {
     comment: '',
     nick: 'Anonymous',
@@ -140,7 +141,8 @@ ValineFactory.prototype._init = function(){
             path = location.pathname,
             pageSize,
             recordIP,
-            clazzName = 'Comment'
+            clazzName = 'Comment',
+            gotapiNotifierChannel
         } = root.config;
         root['config']['path'] = path.replace(/index\.html?$/, '');
         root['config']['clazzName'] = clazzName;
@@ -157,6 +159,7 @@ ValineFactory.prototype._init = function(){
         let size = Number(pageSize || 10);
         root.config.pageSize = !isNaN(size) ? (size < 1 ? 10 : size) : 10;
 
+
         marked.setOptions({
             renderer: new marked.Renderer(),
             highlight: root.config.highlight === false ? null : hanabi,
@@ -164,7 +167,6 @@ ValineFactory.prototype._init = function(){
             tables: true,
             breaks: true,
             pedantic: false,
-            sanitize: true,
             smartLists: true,
             smartypants: true
         });
@@ -181,6 +183,8 @@ ValineFactory.prototype._init = function(){
         }
 
         let id = root.config.app_id || root.config.appId;
+        root.config.gotapiNotifierChannel = gotapiNotifierChannel || ("/valine-comment/notifier/"+id)
+        console.log("gotapi-ws listen on wss://ws.gotapi.net"+root.config.gotapiNotifierChannel)
         let key = root.config.app_key || root.config.appKey;
         if (!id || !key) throw 99;
 
@@ -188,7 +192,7 @@ ValineFactory.prototype._init = function(){
         let serverURLs = '';
         if(!root.config['serverURLs']){
             switch (id.slice(-9)) {
-                // TAB 
+                // TAB
                 case '-9Nh9j0Va':
                     prefix += 'tab.';
                     break;
@@ -244,7 +248,7 @@ ValineFactory.prototype._init = function(){
         root.placeholder = root.config.placeholder || 'Just Go Go';
 
         root.el.innerHTML = `<div class="vwrap"><div class="${`vheader item${inputEl.length}`}">${inputEl.join('')}</div><div class="vedit"><textarea id="veditor" class="veditor vinput" placeholder="${root.placeholder}"></textarea><div class="vctrl"><span class="vemoji-btn">${root.locale['ctrl']['emoji']}</span> | <span class="vpreview-btn">${root.locale['ctrl']['preview']}</span></div><div class="vemojis" style="display:none;"></div><div class="vinput vpreview" style="display:none;"></div></div><div class="vcontrol"><div class="col col-20" title="Markdown is supported"><a href="https://segmentfault.com/markdown" target="_blank"><svg class="markdown" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.64 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3zM9 11H7V8L5.5 9.92 4 8v3H2V5h2l1.5 2L7 5h2v6zm2.99.5L9.5 8H11V5h2v3h1.5l-2.51 3.5z"></path></svg></a></div><div class="col col-80 text-right"><button type="button" title="Cmd|Ctrl+Enter" class="vsubmit vbtn">${root.locale['ctrl']['reply']}</button></div></div><div style="display:none;" class="vmark"></div></div><div class="vinfo" style="display:none;"><div class="vcount col"></div></div><div class="vlist"></div><div class="vempty" style="display:none;"></div><div class="vpage txt-center"></div><div class="info"><div class="power txt-right">Powered By <a href="https://valine.js.org" target="_blank">Valine</a><br>v${VERSION}</div></div>`;
-    
+
 
         // Empty Data
         let vempty = Utils.find(root.el, '.vempty');
@@ -415,7 +419,7 @@ let CounterFactory = {
 
 /**
  * LeanCloud SDK Query Util
- * @param {String} url 
+ * @param {String} url
  * @param {String} id
  */
 ValineFactory.prototype.Q = function (k) {
@@ -476,8 +480,8 @@ ValineFactory.prototype.installLocale = function (locale, mode) {
 }
 
 /**
- * 
- * @param {String} path 
+ *
+ * @param {String} path
  */
 ValineFactory.prototype.setPath = function (path) {
     this.config.path = path
@@ -581,7 +585,7 @@ ValineFactory.prototype.bind = function (option) {
 
     /**
      * 评论框内容变化事件
-     * @param {HTMLElement} el 
+     * @param {HTMLElement} el
      */
     let syncContentEvt = (_el) => {
         let _v = 'comment';
@@ -896,6 +900,22 @@ ValineFactory.prototype.bind = function (option) {
         }
         comment.setACL(getAcl());
         comment.save().then(ret => {
+            try{
+                axios.post("https://ws.gotapi.net" + root.config.gotapiNotifierChannel,{
+                    type:2,
+                    uuid:Math.random()+"-"+Math.random(),
+                    body:{
+                        hash:"-",
+                        data:JSON.stringify(comment),
+                        sent:false
+                    }
+                }).then((data)=>{
+                    console.log(data);
+                });
+            }catch (e){
+                console.log("unknown error while spread comment to gotapi")
+                console.log(e);
+            }
             defaultComment['nick'] != 'Anonymous' && _store && _store.setItem('ValineCache', JSON.stringify({
                 nick: defaultComment['nick'],
                 link: defaultComment['link'],
