@@ -1,6 +1,6 @@
 const VERSION = require('../package.json').version;
 const md5 = require('blueimp-md5');
-const {marked} = require('marked');
+
 const autosize = require('autosize');
 const timeAgo = require('./utils/timeago');
 const detect = require('./utils/detect');
@@ -160,16 +160,7 @@ ValineFactory.prototype._init = function(){
         root.config.pageSize = !isNaN(size) ? (size < 1 ? 10 : size) : 10;
 
 
-        marked.setOptions({
-            renderer: new marked.Renderer(),
-            highlight: root.config.highlight === false ? null : hanabi,
-            gfm: true,
-            tables: true,
-            breaks: true,
-            pedantic: false,
-            smartLists: true,
-            smartypants: true
-        });
+
 
 
         if (recordIP) {
@@ -592,7 +583,7 @@ ValineFactory.prototype.bind = function (option) {
         let _val = (_el.value || '');
         _val = Emoji.parse(_val);
         _el.value = _val;
-        let ret = xssFilter(marked(_val));
+        let ret = xssFilter(_val);
         defaultComment[_v] = ret;
         _vpreview.innerHTML = ret;
         if (_val) autosize(_el);
