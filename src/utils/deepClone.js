@@ -88,4 +88,4 @@ const deepClone = function (data) {
 }
 
 // Export a new instance of the clone constructor
-module.exports = deepClone;
+export  default deepClone;

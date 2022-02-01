@@ -241,4 +241,4 @@ function detectFactory(u) {
 function detect(u){
     return new detectFactory(u);
 }
-module.exports = detect
+export default detect

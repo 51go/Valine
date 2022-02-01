@@ -57,4 +57,4 @@ const padWithZeros = (vNumber, width) => {
     return numAsString;
 }
 
-module.exports = timeAgo
+export default  timeAgo
