@@ -6,8 +6,12 @@ import timeAgo from './utils/timeago';
 import  detect from './utils/detect';
 import  Utils from './utils/domUtils';
 import  Emoji from './plugins/emojis';
+import pida from "pida";
 
-import AV  from 'leancloud-storage'
+//import AV  from 'leancloud-storage'
+import {Kiwi,CommentItem} from './kiwi'
+
+
 import axios from "axios"
 import "./index.scss"
 const defaultComment = {
@@ -174,6 +178,7 @@ ValineFactory.prototype._init = function(){
                 }
         }
 
+        console.log(root)
         let id = root.config.app_id || root.config.appId;
         root.config.gotapiNotifierChannel = gotapiNotifierChannel || ("/valine-comment/notifier/"+id)
         console.log("gotapi-ws listen on wss://ws.gotapi.net"+root.config.gotapiNotifierChannel)
@@ -198,7 +203,7 @@ ValineFactory.prototype._init = function(){
         }
         serverURLs = root.config['serverURLs'] || prefix + 'avoscloud.com';
         try {
-            AV.init({
+            kiwi.init({
                 appId: id,
                 appKey: key,
                 serverURLs: serverURLs,
@@ -211,7 +216,7 @@ ValineFactory.prototype._init = function(){
             if (el) {
                 let k = Utils.attr(el, 'data-xid');
                 if (k) {
-                    root.Q(k).count().then(n => {
+                    root.queryCount(k,root.config).then(n => {
                         el.innerText = n
                     }).catch(ex => {
                         el.innerText = 0
@@ -219,9 +224,6 @@ ValineFactory.prototype._init = function(){
                 }
             }
         })
-
-        // Counter
-        visitor && CounterFactory.add(AV.Object.extend('Counter'),root.config.path);
 
 
         let el = root.config.el || null;
@@ -317,142 +319,41 @@ ValineFactory.prototype._init = function(){
         root.bind();
 
     } catch (ex) {
+        console.log(ex);
         root.ErrorHandler(ex,'init')
     }
 }
 
-// 新建Counter对象
-let createCounter = function (Counter, o) {
-    let newCounter = new Counter();
-    let acl = new AV.ACL();
-    acl.setPublicReadAccess(true);
-    acl.setPublicWriteAccess(true);
-    newCounter.setACL(acl);
-    newCounter.set('url', o.url)
-    newCounter.set('xid', o.xid)
-    newCounter.set('title', o.title)
-    newCounter.set('time', 1)
-    newCounter.save().then(ret => {
-        Utils.find(o.el, '.leancloud-visitors-count').innerText = 1
-    }).catch(ex => {
-        console.log(ex)
-    });
-}
-let CounterFactory = {
-    add(Counter,currPath) {
-        let root = this
-        let lvs = Utils.findAll(document, '.leancloud_visitors,.leancloud-visitors');
-        if (lvs.length) {
-            let lv = lvs[0];
-            let url = Utils.attr(lv, 'id');
-            let title = Utils.attr(lv, 'data-flag-title');
-            let xid = encodeURI(url);
-            let o = {
-                el: lv,
-                url: url,
-                xid: xid,
-                title: title
-            }
-            // 判断是否需要+1
-            if (decodeURI(url) === decodeURI(currPath)) {
-                let query = new AV.Query(Counter);
-                query.equalTo('url', url);
-                query.find().then(ret => {
-                    if (ret.length > 0) {
-                        let v = ret[0];
-                        v.increment("time");
-                        v.save().then(rt => {
-                            Utils.find(lv, '.leancloud-visitors-count').innerText = rt.get('time')
-                        }).catch(ex => {
-                            console.log(ex)
-                        });
-                    } else {
-                        createCounter(Counter, o)
-                    }
-                }).catch(ex => {
-                    ex.code == 101 && createCounter(Counter, o)
-                })
-            } else CounterFactory.show(Counter, lvs)
-        }
-    },
-    show(Counter, lvs) {
-        let COUNT_CONTAINER_REF = '.leancloud-visitors-count';
 
-        // 重置所有计数
-        Utils.each(lvs, (idx, el) => {
-            let cel = Utils.find(el, COUNT_CONTAINER_REF);
-            if (cel) cel.innerText = 0
-        })
-        let urls = [];
-        for (let i in lvs) {
-            if (lvs.hasOwnProperty(i)) urls.push(Utils.attr(lvs[i], 'id'))
-        }
-        if (urls.length) {
-            let query = new AV.Query(Counter);
-            query.containedIn('url', urls);
-            query.find().then(ret => {
-                if (ret.length > 0) {
-                    Utils.each(ret, (idx, item) => {
-                        let url = item.get('url');
-                        let time = item.get('time');
-                        let els = Utils.findAll(document, `.leancloud_visitors[id="${url}"],.leancloud-visitors[id="${url}"]`);
-                        Utils.each(els, (idx, el) => {
-                            let cel = Utils.find(el, COUNT_CONTAINER_REF);
-                            if (cel) cel.innerText = time
-                        })
-                    });
-                }
-            }).catch(ex => {
-                console.error(ex)
-            })
-        }
-    }
-}
 
-/**
- * LeanCloud SDK Query Util
- * @param {String} url
- * @param {String} id
- */
-ValineFactory.prototype.Q = function (k) {
-    let root = this;
-    let len = arguments.length;
-    if (len == 1) {
-        let notExist = new AV.Query(root['config']['clazzName']);
-        notExist.doesNotExist('rid');
-        let isEmpty = new AV.Query(root['config']['clazzName']);
-        isEmpty.equalTo('rid', '');
-        let q = AV.Query.or(notExist, isEmpty);
-        if (k === '*') q.exists('url');
-        else q.equalTo('url', decodeURI(k));
-        q.addDescending('createdAt');
-        q.addDescending('insertedAt');
-        return q;
-    } else {
-        let ids = JSON.stringify(arguments[1]).replace(/(\[|\])/g, '');
-        let cql = `select * from ${root['config']['clazzName']} where rid in (${ids}) order by -createdAt,-createdAt`;
-        return AV.Query.doCloudQuery(cql)
-    }
-}
 
+ValineFactory.prototype.QueryReplies  = (path,rids,config)=>{
+    let kiwi = new Kiwi(config);
+    return kiwi.queryReplies(path,rids);
+}
+ValineFactory.prototype.QueryMain = (path,size,jump,config)=>{
+    let kiwi = new Kiwi(config);
+    return kiwi.queryMain(path,size,jump);
+}
+ValineFactory.prototype.queryCount = (path,config)=>{
+    return (new Kiwi(config)).count(path);
+}
 ValineFactory.prototype.ErrorHandler = function (ex,origin) {
-    console.log(origin)
-    console.error(ex)
-    console.error(ex.code,ex.message)
+
     let root = this;
     root.el && root.loading.hide().nodata.hide()
     if (({}).toString.call(ex) === "[object Error]") {
         let code = ex.code || '',
             t = root.locale['error'][code],
             msg = t || ex.message || ex.error || '';
-        if (code == 101) root.nodata.show()
+        if (code === 101) root.nodata.show()
         else root.el && root.nodata.show(`<pre style="text-align:left;">Code ${code}: ${msg}</pre>`) ||
             console && console.error(`Code ${code}: ${msg}`)
     } else {
         root.el && root.nodata.show(`<pre style="text-align:left;">${JSON.stringify(ex)}</pre>`) ||
             console && console.error(JSON.stringify(ex))
     }
-    return;
+
 }
 
 /**
@@ -658,14 +559,11 @@ ValineFactory.prototype.bind = function (option) {
         return vquote
     }
 
-    let query = (no = 1) => {
+    let query = (pageNumber = 1) => {
         let size = root.config.pageSize;
         let count = Number(Utils.find(root.el, '.vnum').innerText);
         root.loading.show();
-        let cq = root.Q(root.config.path);
-        cq.limit(size);
-        cq.skip((no - 1) * size);
-        cq.find().then(rets => {
+        let cq = root.QueryMain(root.config.path, size, (pageNumber - 1) * size,root.config).then(rets => {
             let len = rets.length;
             let rids = []
             for (let i = 0; i < len; i++) {
@@ -674,7 +572,7 @@ ValineFactory.prototype.bind = function (option) {
                 insertDom(ret, Utils.find(root.el, '.vlist'), !0)
             }
             // load children comment
-            root.Q(root.config.path, rids).then(ret => {
+            root.QueryReplies(root.config.path, rids).then(ret => {
                 let childs = ret && ret.results || []
                 for (let k = 0; k < childs.length; k++) {
                     let child = childs[k];
@@ -682,20 +580,24 @@ ValineFactory.prototype.bind = function (option) {
                 }
             })
             let _vpage = Utils.find(root.el, '.vpage');
-            _vpage.innerHTML = size * no < count ? `<button type="button" class="vmore vbtn">${root.locale['ctrl']['more']}</button>` : '';
+            _vpage.innerHTML = size * pageNumber < count ? `<button type="button" class="vmore vbtn">${root.locale['ctrl']['more']}</button>` : '';
             let _vmore = Utils.find(_vpage, '.vmore');
             if (_vmore) {
                 Utils.on('click', _vmore, (e) => {
                     _vpage.innerHTML = '';
-                    query(++no);
+                    query(++pageNumber);
                 })
             }
             root.loading.hide();
         }).catch(ex => {
+            console.log("591")
             root.loading.hide().ErrorHandler(ex,'query')
         })
+        console.log(594)
     }
-    root.Q(root.config.path).count().then(num => {
+    console.log("root.config")
+    console.log(root.config)
+    root.queryCount(root.config.path,root.config).then(num => {
         if (num > 0) {
             Utils.attr(Utils.find(root.el, '.vinfo'), 'style', 'display:block;');
             Utils.find(root.el, '.vcount').innerHTML = `<span class="vnum">${num}</span> ${root.locale['tips']['comments']}`;
@@ -847,7 +749,7 @@ ValineFactory.prototype.bind = function (option) {
             inputs['mail'].focus();
             return;
         }
-        if (defaultComment['comment'] == '') {
+        if (defaultComment['comment'] === '') {
             inputs['comment'].focus();
             return;
         }
@@ -863,19 +765,17 @@ ValineFactory.prototype.bind = function (option) {
 
     // setting access
     let getAcl = () => {
-        let acl = new AV.ACL();
-        acl.setPublicReadAccess(!0);
-        acl.setPublicWriteAccess(!1);
-        return acl;
+
     }
 
     let commitEvt = () => {
         Utils.attr(submitBtn, 'disabled', !0);
         root.loading.show(!0);
         // 声明类型
-        let Ct = AV.Object.extend(root.config.clazzName || 'Comment');
-        // 新建对象
-        let comment = new Ct();
+        let comment = new CommentItem();
+        let dateNow = new Date();
+        comment.id = md5(dateNow.toString()+dateNow.getMilliseconds());
+
         defaultComment['url'] = decodeURI(root.config.path);
         defaultComment['insertedAt'] = new Date();
         if (atData['rid']) {
@@ -890,8 +790,7 @@ ValineFactory.prototype.bind = function (option) {
                 comment.set(i, _v);
             }
         }
-        comment.setACL(getAcl());
-        comment.save().then(ret => {
+        comment.save(root.config).then(ret => {
             setTimeout(()=>{     try{
                 axios.post("https://ws.gotapi.net" + root.config.gotapiNotifierChannel,{
                     type:2,
@@ -920,7 +819,7 @@ ValineFactory.prototype.bind = function (option) {
 
             },10);
 
-            defaultComment['nick'] != 'Anonymous' && _store && _store.setItem('ValineCache', JSON.stringify({
+            defaultComment['nick'] !== 'Anonymous' && _store && _store.setItem('ValineCache', JSON.stringify({
                 nick: defaultComment['nick'],
                 link: defaultComment['link'],
                 mail: defaultComment['mail']
@@ -998,30 +897,14 @@ ValineFactory.prototype.bind = function (option) {
     }
 
     let signUp = (o) => {
-        let u = new AV.User();
-        u.setUsername(o.username);
-        u.setPassword(o.mail);
-        u.setEmail(o.mail);
-        u.setACL(getAcl());
-        return u.signUp();
+        console.log("signUp not supported");
+        return new Promise((resolve,reject)=>{
+            resolve();
+        });
     }
 
     let mailEvt = (o) => {
-        AV.User.requestPasswordReset(o.mail).then(ret => {}).catch(e => {
-            if (e.code == 1) {
-                root.alert.show({
-                    type: 0,
-                    text: `ヾ(ｏ･ω･)ﾉ At太频繁啦，提醒功能暂时宕机。<br>${e.error}`,
-                    ctxt: root.locale['ctrl']['ok']
-                })
-            } else {
-                signUp(o).then(ret => {
-                    mailEvt(o);
-                }).catch(x => {
-                    //err(x)
-                })
-            }
-        })
+        console.log("mailEvent not supported ")
     }
     Utils.on('click', submitBtn, submitEvt);
     Utils.on('keydown', document, function (e) {
@@ -1033,7 +916,7 @@ ValineFactory.prototype.bind = function (option) {
         // tab key
         if (keyCode === 9) {
             let focus = document.activeElement.id || ''
-            if (focus == 'veditor') {
+            if (focus === 'veditor') {
                 e.preventDefault();
                 _insertAtCaret(_veditor, '    ');
             }
@@ -1071,7 +954,7 @@ ValineFactory.prototype.bind = function (option) {
         formData.append('file', file);
         let xhr = window.XMLHttpRequest ? new XMLHttpRequest() : new ActiveXObject("Microsoft.XMLHTTP");
         xhr.onreadystatechange = function () {
-            if (xhr.readyState == 4 && xhr.status == 200) {
+            if (xhr.readyState === 4 && xhr.status === 200) {
                 try {
                     let json = JSON.parse(xhr.responseText);
                     callback && callback(null,json)
@@ -1085,6 +968,7 @@ ValineFactory.prototype.bind = function (option) {
         xhr.onerror = function(e){
             console.log(e)
         }
+
         // xhr.open('POST', 'https://sm.ms/api/v2/upload?inajax=1',true);
         // xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded')
         xhr.open('POST','https://imgkr.com/api/files/upload',true);
